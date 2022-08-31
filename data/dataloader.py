@@ -9,14 +9,15 @@ from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
 
 from utils.timefeatures import time_features
-from utils.tools import StandardScaler
+from sklearn.preprocessing import StandardScaler
+#from utils.tools import StandardScaler
 from utils.configure import Config
 
 
 class MyDataset(Dataset):
     def __init__(self, root_path='data', flag='train',
                  data_path='train.csv',
-                 target='inflow', scale=False, inverse=False,
+                 target='inflow', scale=True, inverse=False,
                  timeenc=0, freq='h', cols=None):
         assert flag in ['train', 'test', 'val']
         type_map = {'train': 0, 'val': 1, 'test': 2}
