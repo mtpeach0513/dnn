@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 
+from utils.configure import Config
+
 
 class BasicNet(pl.LightningModule):
     def __init__(self, input_dim):
@@ -17,19 +19,25 @@ class BasicNet(pl.LightningModule):
         self.criterion = nn.MSELoss()
 
     def forward(self, x):
-        return self.net(x)
+        return self.net(x).squeeze(1)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
-        return optimizer
+        optimizer = torch.optim.AdamW(self.parameters(), lr=Config.lr)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
+        return {'optimizer': optimizer, 'lr_scheduler': scheduler, 'monitor': 'val_loss'}
 
     def training_step(self, batch, batch_idx):
         x, y, _ = batch
         y_hat = self(x)
         loss = self.criterion(y_hat, y)
-        self.log('train_loss', loss, on_epoch=True)
+        self.log('train_loss', loss)
         return loss
 
+    def validation_step(self, batch, batch_idx):
+        x, y, _ = batch
+        y_hat = self(x)
+        loss = self.criterion(y_hat, y)
+        self.log('val_loss', loss)
 
 class ElasticLinear(pl.LightningModule):
     def __init__(self, loss_fn, n_inputs:int=1, learning_rate=0.05, l1_lambda=0.05, l2_lambda=0.05):
