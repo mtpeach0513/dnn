@@ -12,17 +12,17 @@ class BasicNet(pl.LightningModule):
         self.net = nn.Sequential(
             nn.Linear(input_dim, 32),
             nn.BatchNorm1d(32),
-            nn.Dropout(p=0.2),
             nn.LeakyReLU(),
             nn.Linear(32, 1)
         )
         self.criterion = nn.MSELoss()
+        #self.criterion = nn.SmoothL1Loss()
 
     def forward(self, x):
         return self.net(x).squeeze(1)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=Config.lr)
+        optimizer = torch.optim.Adam(self.parameters(), lr=Config.lr)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
         return {'optimizer': optimizer, 'lr_scheduler': scheduler, 'monitor': 'val_loss'}
 
@@ -38,6 +38,12 @@ class BasicNet(pl.LightningModule):
         y_hat = self(x)
         loss = self.criterion(y_hat, y)
         self.log('val_loss', loss)
+
+    def test_step(self, batch, batch_idx):
+        x, y, _ = batch
+        y_hat = self(x)
+        loss = self.criterion(y_hat, y)
+        self.log('test_loss', loss)
 
 class ElasticLinear(pl.LightningModule):
     def __init__(self, loss_fn, n_inputs:int=1, learning_rate=0.05, l1_lambda=0.05, l2_lambda=0.05):
