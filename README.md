@@ -1,1 +1,1 @@
-# dnn 
+# Deep Neural Netwrk with PyTorch lightning
