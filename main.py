@@ -1,6 +1,7 @@
 import time
 
 import pandas as pd
+import torch
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
@@ -35,12 +36,18 @@ if __name__ == '__main__':
     early_stopping = EarlyStopping(
         monitor='val_loss',
         mode='min',
-        patience=10,
+        patience=20,
     )
 
+    accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
     trainer = pl.Trainer(
+        accelerator=accelerator,
+        devices=1,
+        auto_select_gpus=True,
         callbacks=[model_checkpoint, early_stopping],
+        max_epochs=-1,
     )
     trainer.fit(model, data_module)
-    trainer.predict(model, data_module)
+    trainer.test(model, data_module)
+    #trainer.predict(model, data_module)
     print(f'elapsed time: {time.time() - start:.2f} [sec]')
