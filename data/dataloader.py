@@ -35,6 +35,7 @@ class MyDataset(Dataset):
 
     def __read_data__(self):
         self.scaler = StandardScaler()
+        self.scaler_y = StandardScaler()
         df_raw = pd.read_csv(os.path.join(self.root_path, self.data_path))
         df_raw = reduce_memory_usage(df_raw)
         if self.cols:
@@ -83,6 +84,7 @@ class MyDataset(Dataset):
         if self.scale:
             train_data = df_data[border1s[0]:border2s[0]]
             self.scaler.fit(train_data.to_numpy())
+            self.scaler_y.fit(train_data.iloc[:, -1].to_numpy().reshape(-1, 1))
             data = self.scaler.transform(df_data.to_numpy())
         else:
             data = df_data.to_numpy()

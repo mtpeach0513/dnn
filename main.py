@@ -51,7 +51,7 @@ if __name__ == '__main__':
     trainer.fit(model, data_module)
     trainer.test(model, data_module)
     predictions = trainer.predict(model, data_module)
-    scaler = MyDataset().scaler
+    scaler = MyDataset().scaler_y
     predictions = scaler.inverse_transform(
         np.array(predictions).reshape(-1, 1)
     )
