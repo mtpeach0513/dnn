@@ -45,6 +45,11 @@ class BasicNet(pl.LightningModule):
         loss = self.criterion(y_hat, y)
         self.log('test_loss', loss)
 
+    def predict_step(self, batch, batch_idex, dataloader_idx=0):
+        x, y, _ = batch
+        y_hat = self(x)
+        return y_hat
+
 class ElasticLinear(pl.LightningModule):
     def __init__(self, loss_fn, n_inputs:int=1, learning_rate=0.05, l1_lambda=0.05, l2_lambda=0.05):
         super(ElasticLinear, self).__init__()

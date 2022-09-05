@@ -144,5 +144,8 @@ cython_debug/
 *.pickle
 *.gv
 *.txt
+*.ipynb
+*.npy
+data/dataset.py
 lightning_logs/
 notebook/

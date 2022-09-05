@@ -1,5 +1,6 @@
 import time
 
+import numpy as np
 import pandas as pd
 import torch
 import pytorch_lightning as pl
@@ -26,7 +27,7 @@ if __name__ == '__main__':
     model = BasicNet(input_dim)
 
     model_checkpoint = ModelCheckpoint(
-        'logs',
+        dirpath='lightning_logs',
         filename='{epoch}-{val_loss:.2f}',
         monitor='val_loss',
         mode='min',
@@ -49,5 +50,10 @@ if __name__ == '__main__':
     )
     trainer.fit(model, data_module)
     trainer.test(model, data_module)
-    #trainer.predict(model, data_module)
+    predictions = trainer.predict(model, data_module)
+    scaler = MyDataset().scaler
+    predictions = scaler.inverse_transform(
+        np.array(predictions).reshape(-1, 1)
+    )
+    np.save('prediction', predictions)
     print(f'elapsed time: {time.time() - start:.2f} [sec]')
