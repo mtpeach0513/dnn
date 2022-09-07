@@ -23,6 +23,7 @@ if __name__ == '__main__':
     print(f'input_dim: {input_dim}')
     print('========================================')
 
+    pl.seed_everything(42)
     data_module = MyDataModule(conf)
     model = BasicNet(input_dim)
 
@@ -45,8 +46,10 @@ if __name__ == '__main__':
         accelerator=accelerator,
         devices=1,
         auto_select_gpus=True,
+        deterministic=True,
         callbacks=[model_checkpoint, early_stopping],
         max_epochs=-1,
+        min_epochs=conf.num_epochs,
     )
     trainer.fit(model, data_module)
     trainer.test(model, data_module)
