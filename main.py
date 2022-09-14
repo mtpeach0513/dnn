@@ -32,8 +32,8 @@ if __name__ == '__main__':
         filename='{epoch}-{val_loss:.2f}',
         monitor='val_loss',
         mode='min',
-        save_top_k=1,
-        save_last=False,
+        save_top_k=5,
+        save_last=True,
     )
     early_stopping = EarlyStopping(
         monitor='val_loss',
@@ -47,8 +47,11 @@ if __name__ == '__main__':
         devices=1,
         auto_select_gpus=True,
         deterministic=True,
-        callbacks=[model_checkpoint, early_stopping],
-        max_epochs=-1,
+        callbacks=[
+            model_checkpoint,
+            #early_stopping
+        ],
+        max_epochs=500,
         min_epochs=conf.num_epochs,
     )
     trainer.fit(model, data_module)

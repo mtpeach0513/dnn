@@ -13,6 +13,7 @@ class BasicNetForKFold(pl.LightningModule):
             nn.Linear(input_dim, 32),
             nn.BatchNorm1d(32),
             nn.LeakyReLU(),
+            nn.Dropout(p=.2),
             nn.Linear(32, 1)
         )
         self.criterion = nn.MSELoss()
@@ -23,7 +24,8 @@ class BasicNetForKFold(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=Config.lr)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, factor=0.5, min_lr=Config.min_lr, verbose=True)
         return {'optimizer': optimizer, 'lr_scheduler': scheduler, 'monitor': 'val_loss'}
 
     def training_step(self, batch, batch_idx):
@@ -59,6 +61,7 @@ class BasicNet(pl.LightningModule):
             nn.Linear(input_dim, 32),
             nn.BatchNorm1d(32),
             nn.LeakyReLU(),
+            nn.Dropout(p=.2),
             nn.Linear(32, 1)
         )
         self.criterion = nn.MSELoss()
@@ -69,7 +72,8 @@ class BasicNet(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=Config.lr)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, factor=0.5, min_lr=Config.min_lr, verbose=True)
         return {'optimizer': optimizer, 'lr_scheduler': scheduler, 'monitor': 'val_loss'}
 
     def training_step(self, batch, batch_idx):
