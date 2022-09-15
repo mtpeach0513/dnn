@@ -4,7 +4,8 @@ import numpy as np
 import pytorch_lightning as pl
 
 from data.dataloader import MyKFoldDataModule, MyDatasetForKFold
-from models.model import BasicNetForKFold
+from models.model import BasicNet
+from models.mlp import MLP
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -22,12 +23,12 @@ if __name__ == '__main__':
     datamodule = MyKFoldDataModule()
     scaler = MyDatasetForKFold().scaler_y
     preds = []
-    for i in range(1, 6):
-        model = BasicNetForKFold.load_from_checkpoint(
+    for i in range(1, 5):
+        model = BasicNet.load_from_checkpoint(
             f'lightning_logs/model.{i}.pt',
             input_dim=input_dim
         )
-        trainer = pl.Trainer(deterministic=True)
+        trainer = pl.Trainer(deterministic=True, logger=False)
         pred = trainer.predict(model, datamodule)
         predictions = scaler.inverse_transform(
             np.array(pred).reshape(-1, 1)
