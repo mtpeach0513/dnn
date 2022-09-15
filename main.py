@@ -1,12 +1,12 @@
 import time
 
 import numpy as np
-import pandas as pd
 import torch
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
 from models.model import BasicNet
+from models.mlp import MLP
 from data.dataloader import MyDataModule, MyDataset
 from utils.configure import Config
 
@@ -25,14 +25,15 @@ if __name__ == '__main__':
 
     pl.seed_everything(42)
     data_module = MyDataModule(conf)
-    model = BasicNet(input_dim)
+    #model = BasicNet(input_dim)
+    model = MLP(input_dim, [128, 64, 32], 0.2)
 
     model_checkpoint = ModelCheckpoint(
         dirpath='lightning_logs',
-        filename='{epoch}-{val_loss:.2f}',
+        filename='{epoch}-{val_loss:.3f}',
         monitor='val_loss',
         mode='min',
-        save_top_k=5,
+        save_top_k=3,
         save_last=True,
     )
     early_stopping = EarlyStopping(
