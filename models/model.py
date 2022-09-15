@@ -5,54 +5,6 @@ import pytorch_lightning as pl
 from utils.configure import Config
 
 
-class BasicNetForKFold(pl.LightningModule):
-    def __init__(self, input_dim):
-        super(BasicNetForKFold, self).__init__()
-
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, 32),
-            nn.BatchNorm1d(32),
-            nn.LeakyReLU(),
-            nn.Dropout(p=.2),
-            nn.Linear(32, 1)
-        )
-        self.criterion = nn.MSELoss()
-        #self.criterion = nn.SmoothL1Loss()
-
-    def forward(self, x):
-        return self.net(x).squeeze(1)
-
-    def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=Config.lr)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, factor=0.5, min_lr=Config.min_lr, verbose=True)
-        return {'optimizer': optimizer, 'lr_scheduler': scheduler, 'monitor': 'val_loss'}
-
-    def training_step(self, batch, batch_idx):
-        x, y = batch
-        y_hat = self(x)
-        loss = self.criterion(y_hat, y)
-        self.log('train_loss', loss)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        x, y = batch
-        y_hat = self(x)
-        loss = self.criterion(y_hat, y)
-        self.log('val_loss', loss)
-
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        y_hat = self(x)
-        loss = self.criterion(y_hat, y)
-        self.log('test_loss', loss)
-
-    def predict_step(self, batch, batch_idex, dataloader_idx=0):
-        x, y = batch
-        y_hat = self(x)
-        return y_hat
-
-
 class BasicNet(pl.LightningModule):
     def __init__(self, input_dim):
         super(BasicNet, self).__init__()
@@ -73,30 +25,30 @@ class BasicNet(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=Config.lr)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, factor=0.5, min_lr=Config.min_lr, verbose=True)
+            optimizer, factor=0.5, min_lr=Config.min_lr, patience=10, verbose=True)
         return {'optimizer': optimizer, 'lr_scheduler': scheduler, 'monitor': 'val_loss'}
 
     def training_step(self, batch, batch_idx):
-        x, y, _ = batch
+        x, y = batch
         y_hat = self(x)
         loss = self.criterion(y_hat, y)
         self.log('train_loss', loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x, y, _ = batch
+        x, y = batch
         y_hat = self(x)
         loss = self.criterion(y_hat, y)
         self.log('val_loss', loss)
 
     def test_step(self, batch, batch_idx):
-        x, y, _ = batch
+        x, y = batch
         y_hat = self(x)
         loss = self.criterion(y_hat, y)
         self.log('test_loss', loss)
 
     def predict_step(self, batch, batch_idex, dataloader_idx=0):
-        x, y, _ = batch
+        x, y = batch
         y_hat = self(x)
         return y_hat
 

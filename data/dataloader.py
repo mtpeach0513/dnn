@@ -224,7 +224,7 @@ class MyDataModule(pl.LightningDataModule):
             self.dataset_train = MyDataset(flag='train')
             self.dataset_val = MyDataset(flag='val')
         if stage == 'test' or stage is None:
-            self.dataset_test = MyDataset(flag='test')
+            self.dataset_test = MyDataset_Pred(flag='test')
         if stage == 'predict' or stage is None:
             self.dataset_pred = MyDataset_Pred(flag='pred')
 
@@ -276,16 +276,12 @@ class MyDataModule(pl.LightningDataModule):
 class MyDataset(Dataset):
     def __init__(self, root_path='data', flag='train',
                  data_path='train.csv',
-                 target='inflow', scale=True, inverse=False,
-                 timeenc=0, freq='h', cols=None):
-        assert flag in ['train', 'test', 'val']
-        type_map = {'train': 0, 'val': 1, 'test': 2}
+                 target='inflow', scale=True, cols=None):
+        assert flag in ['train', 'val']
+        type_map = {'train': 0, 'val': 1}
         self.set_type = type_map[flag]
         self.target = target
         self.scale = scale
-        self.inverse = inverse
-        self.timeenc = timeenc
-        self.freq = freq
         self.cols = cols
         self.root_path = root_path
         self.data_path = data_path
@@ -307,32 +303,13 @@ class MyDataset(Dataset):
 
         if 'id' in df_raw.columns:
             num_id = df_raw.id.nunique()
-            train = int(num_id * .7)
-            test = int(num_id * .2)
-            valid = num_id - train - test
-            train_list, test_list, valid_list = [], [], []
-            for i in df_raw.id.unique()[:train]:
-                df = df_raw[df_raw.id == i]
-                train_list.append(df)
-            df_train = pd.concat(train_list, axis=0)
-            num_train = len(df_train)
-            for i in df_raw.id.unique()[train:train + valid]:
-                df = df_raw[df_raw.id == i]
-                valid_list.append(df)
-            df_valid = pd.concat(valid_list, axis=0)
-            num_valid = len(df_valid)
-            for i in df_raw.id.unique()[-test:]:
-                df = df_raw[df_raw.id == i]
-                test_list.append(df)
-            df_test = pd.concat(test_list, axis=0)
-            num_test = len(df_test)
+            train = int(num_id * .8)
+            num_train = len(df_raw[df_raw['id'] <= train])
             df_raw.pop('id')
         else:
-            num_train = int(len(df_raw) * .7)
-            num_test = int(len(df_raw) * .2)
-            num_valid = len(df_raw) - num_train - num_test
-        border1s = [0, num_train, len(df_raw) - num_test]
-        border2s = [num_train, num_train + num_valid, len(df_raw)]
+            num_train = int(len(df_raw) * .8)
+        border1s = [0, num_train]
+        border2s = [num_train, len(df_raw)]
         border1 = border1s[self.set_type]
         border2 = border2s[self.set_type]
 
@@ -347,25 +324,13 @@ class MyDataset(Dataset):
         else:
             data = df_data.to_numpy()
 
-        df_stamp = df_raw[['date']][border1:border2]
-        df_stamp['date'] = pd.to_datetime(df_stamp.date)
-        data_stamp = time_features(df_stamp, timeenc=self.timeenc, freq=self.freq)
-
         self.data_x = data[border1:border2, :-1].astype(np.float32)
-        if self.inverse:
-            self.data_y = df_data.to_numpy()[border1:border2, -1].astype(np.float32)
-        else:
-            self.data_y = data[border1:border2, -1].astype(np.float32)
-        self.data_stamp = data_stamp
+        self.data_y = data[border1:border2, -1].astype(np.float32)
 
     def __getitem__(self, index):
-        seq_x = self.data_x[index]
-        if self.inverse:
-            seq_y = np.concatenate([self.data_x[index], self.data_y[index]], 0)
-        else:
-            seq_y = self.data_y[index]
-        seq_mark = self.data_stamp[index]
-        return seq_x, seq_y, seq_mark
+        x = self.data_x[index]
+        y = self.data_y[index]
+        return x, y
 
     def __len__(self):
         return len(self.data_x)
@@ -377,14 +342,10 @@ class MyDataset(Dataset):
 class MyDataset_Pred(Dataset):
     def __init__(self, root_path='data', flag='pred',
                  data_path='test.csv',
-                 target='inflow', scale=True, inverse=False,
-                 timeenc=0, freq='h', cols=None):
-        assert flag in ['pred']
+                 target='inflow', scale=True, cols=None):
+        assert flag in ['test', 'pred']
         self.target = target
         self.scale = scale
-        self.inverse = inverse
-        self.timeenc = timeenc
-        self.freq = freq
         self.cols = cols
         self.root_path = root_path
         self.data_path = data_path
@@ -414,30 +375,13 @@ class MyDataset_Pred(Dataset):
         else:
             data = df_data.to_numpy()
 
-        tmp_stamp = df_raw[['date']]
-        tmp_stamp['date'] = pd.to_datetime(tmp_stamp.date)
-        df_stamp = pd.DataFrame(columns=['date'])
-        df_stamp.date = list(tmp_stamp.date.to_numpy())
-        data_stamp = time_features(df_stamp, timeenc=self.timeenc, freq=self.freq[-1:])
-
         self.data_x = data[:, :-1].astype(np.float32)
-        if self.inverse:
-            self.data_y = df_data.to_numpy()[:, -1].astype(np.float32)
-        else:
-            self.data_y = data[:, -1].astype(np.float32)
-        self.data_stamp = data_stamp
+        self.data_y = data[:, -1].astype(np.float32)
 
     def __getitem__(self, index):
-        seq_x = self.data_x[index]
-        if self.inverse:
-            seq_y = np.concatenate([self.data_x[index], self.data_y[index]], 0)
-        else:
-            seq_y = self.data_y[index]
-        seq_mark = self.data_stamp[index]
-        return seq_x, seq_y, seq_mark
+        x = self.data_x[index]
+        y = self.data_y[index]
+        return x, y
 
     def __len__(self):
         return len(self.data_x)
-
-    def inverse_transform(self, data):
-        return self.scaler.inverse_transform(data)
