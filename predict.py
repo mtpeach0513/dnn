@@ -1,8 +1,6 @@
 import time
 
 import numpy as np
-import pandas as pd
-import torch
 import pytorch_lightning as pl
 
 from models.model import BasicNet
@@ -25,10 +23,10 @@ if __name__ == '__main__':
     data_module = MyDataModule(conf)
 
     model = BasicNet.load_from_checkpoint(
-        'lightning_logs/version_0/epoch=114-val_loss=0.17.ckpt',
+        'lightning_logs/version_5/last.ckpt',
         input_dim=input_dim
     )
-    trainer = pl.Trainer()
+    trainer = pl.Trainer(deterministic=True, logger=False)
     predictions = trainer.predict(model, data_module)
     scaler = MyDataset().scaler_y
     predictions = scaler.inverse_transform(
