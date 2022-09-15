@@ -40,26 +40,26 @@ class MLP(pl.LightningModule):
         return {'optimizer': optimizer, 'lr_scheduler': scheduler, 'monitor': 'val_loss'}
 
     def training_step(self, batch, batch_idx):
-        x, y, _ = batch
+        x, y = batch
         y_hat = self(x)
         loss = self.criterion(y_hat, y)
         self.log('train_loss', loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x, y, _ = batch
+        x, y = batch
         y_hat = self(x)
         loss = self.criterion(y_hat, y)
         self.log('val_loss', loss)
 
     def test_step(self, batch, batch_idx):
-        x, y, _ = batch
+        x, y = batch
         y_hat = self(x)
         loss = self.criterion(y_hat, y)
         self.log('test_loss', loss)
 
     def predict_step(self, batch, batch_idex, dataloader_idx=0):
-        x, y, _ = batch
+        x, y = batch
         y_hat = self(x)
         return y_hat
 
