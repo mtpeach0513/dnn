@@ -213,20 +213,28 @@ class MyDatasetForKFoldPredict(Dataset):
 
 
 class MyDataModule(pl.LightningDataModule):
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, root_path='data',
+                 data_path='train.csv', test_path='test.csv'):
         super(MyDataModule, self).__init__()
+        self.root_path = root_path
+        self.data_path = data_path
+        self.test_path = test_path
         self.batch_size = config.batch_size
         self.num_workers = config.num_workers
         self.pin_memory = config.pin_memory
 
     def setup(self, stage: Optional[str] = None):
         if stage == 'fit' or stage is None:
-            self.dataset_train = MyDataset(flag='train')
-            self.dataset_val = MyDataset(flag='val')
+            self.dataset_train = MyDataset(
+                root_path=self.root_path, data_path=self.data_path, flag='train')
+            self.dataset_val = MyDataset(
+                root_path=self.root_path, data_path=self.data_path, flag='val')
         if stage == 'test' or stage is None:
-            self.dataset_test = MyDataset_Pred(flag='test')
+            self.dataset_test = MyDataset_Pred(
+                root_path=self.root_path, data_path=self.test_path, flag='test')
         if stage == 'predict' or stage is None:
-            self.dataset_pred = MyDataset_Pred(flag='pred')
+            self.dataset_pred = MyDataset_Pred(
+                root_path=self.root_path, data_path=self.test_path, flag='pred')
 
     def train_dataloader(self):
         train_loader = DataLoader(
@@ -352,7 +360,8 @@ class MyDataset_Pred(Dataset):
         self.__read_data__()
 
     def __read_data__(self):
-        self.scaler = MyDataset().scaler
+        self.scaler = MyDataset(
+            root_path=self.root_path, data_path=self.data_path).scaler
         df_raw = pd.read_csv(os.path.join(self.root_path, self.data_path))
         df_raw = reduce_memory_usage(df_raw)
         if self.cols:
