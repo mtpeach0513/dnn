@@ -48,13 +48,14 @@ if __name__ == '__main__':
 
     pl.seed_everything(42)
 
-    data_module = MyDataModule(conf, root_path=args.root_path, data_path=args.data_path)
+    data_module = MyDataModule(conf, root_path=args.root_path, data_path=args.data_path, test_path=args.test_path)
 
     # when train the model
     if args.stage in ['train', 'fit']:
         model = MLP(args.input_dim, args.layers_dim, args.dropout)
         logger = TensorBoardLogger(save_dir='lightning_logs', name=args.location, version=args.version)
         log_dir = logger.log_dir
+        ckpt_ver = f'version_{logger.version}'
     # when you want the model to predict the test data
     else:
         root_dir = os.path.join('lightning_logs', args.location)
@@ -65,9 +66,10 @@ if __name__ == '__main__':
                     dir_ver = f.split('_')[1].replace('/', '')
                     existing_versions.append(int(dir_ver))
             if len(existing_versions) == 1:
-                ckpt_ver = 0
+                ckpt_ver = 'version_0'
             else:
                 ckpt_ver = max(existing_versions)
+                ckpt_ver = f'version_{ckpt_ver}'
         else:
             version = args.version if isinstance(args.version, str) else f'version_{args.version}'
             if os.path.isdir(os.path.join(root_dir, version)):
@@ -83,7 +85,10 @@ if __name__ == '__main__':
         log_dir = f'lightning_logs/{args.location}'
 
     ld = '-'.join(map(str, args.layers_dim))
-    model_name = f'{args.model}_{args.location}_ld{ld}_{ckpt_ver}'
+    div = os.path.splitext(args.data_path)[0].split('_')[1]
+    model_name = f'{args.model}_{args.location}_{div}_ld{ld}_{ckpt_ver}'
+    print(f'model name: {model_name}')
+    print('\n========================================\n')
 
     model_checkpoint = ModelCheckpoint(
         #dirpath=f'lightning_logs/{args.location}',
