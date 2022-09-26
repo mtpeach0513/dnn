@@ -1,8 +1,13 @@
 import logging
+from typing import Callable
 
 import numpy as np
 import pandas as pd
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+
 
 def adjust_learning_rate(optimizer, epoch, args):
     # lr = args.learning_rate * (0.2 ** (epoch // 2))
@@ -18,6 +23,39 @@ def adjust_learning_rate(optimizer, epoch, args):
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
         print(f'Updating learning rate to {lr}')
+
+
+def reglu(x: Tensor) -> Tensor:
+    a, b = x.chunk(2, dim=-1)
+    return a * F.relu(b)
+
+
+def geglu(x: Tensor) -> Tensor:
+    a, b = x.chunk(2, dim=-1)
+    return a * F.gelu(b)
+
+
+def get_activation_fn(name: str) -> Callable[[Tensor], Tensor]:
+    return (
+        reglu
+        if name == 'reglu'
+        else geglu
+        if name == 'geglu'
+        else torch.sigmoid
+        if name == 'sigmoid'
+        else getattr(F, name)
+    )
+
+
+def get_nonglu_activation_fn(name: str) -> Callable[[Tensor], Tensor]:
+    return (
+        F.relu
+        if name == 'reglu'
+        else F.gelu
+        if name == 'geglu'
+        else get_activation_fn(name)
+    )
+
 
 class EarlyStopping:
     def __init__(self, patience=7, verbose=False, delta=0):
@@ -50,10 +88,12 @@ class EarlyStopping:
         torch.save(model.state_dict(), path+'/'+'checkpoint.pth')
         self.val_loss_min = val_loss
 
+
 class dotdict(dict):
     __getattr__ = dict.get
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
+
 
 class StandardScaler():
     def __init__(self):
@@ -80,6 +120,7 @@ class StandardScaler():
             std = std[-1:]
         """
         return (data * std) + mean
+
 
 def reduce_memory_usage(df, logger=None, level=logging.DEBUG):
     print_ = print if logger is None else lambda msg: logger.log(level, msg)

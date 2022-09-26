@@ -1,7 +1,6 @@
 import argparse
 import os
 import time
-from typing import List, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -11,6 +10,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from pytorch_lightning.loggers import TensorBoardLogger
 
 from models.mlp import MLP
+from models.resnet import ResNet
 from data.dataloader import MyDataModule, MyDataset
 from utils.configure import Config
 
@@ -22,7 +22,7 @@ if __name__ == '__main__':
     start = time.time()
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, default='mlp', help='model of experiment, options: [mlp]')
+    parser.add_argument('--model', type=str, default='mlp', choices=['mlp', 'resnet'], help='model of experiment')
     parser.add_argument(
         '--stage', type=str, default='train', choices=['train', 'fit', 'test', 'pred', 'predict'],
         help='model behaviour stage, option: [train(fit), test(pred, predict)]')
@@ -30,9 +30,19 @@ if __name__ == '__main__':
     parser.add_argument('--data_path', type=str, default='train.csv', help='data file')
     parser.add_argument('--test_path', type=str, default='test.csv', help='test data file')
 
-    parser.add_argument('--layers_dim', type=List[int], default=[64, 32], help='dimensions of model layers')
-    parser.add_argument('--dropout', type=float, default=0.2, help='dropout prob')
-    parser.add_argument('--location', type=str, default='miharu', help='location of experiment')
+    # MLP hparams
+    parser.add_argument('--layers_dim', nargs='+', type=int, default=[64, 32], help='dimensions of model layers')
+    parser.add_argument('--dropout', type=float, default=0.5, help='dropout prob')
+
+    # ResNet hparams
+    parser.add_argument('--dim', type=int, default=32, help='dimensions of first layer')
+    parser.add_argument('--hidden_factor', type=int, default=4, help='dimensional factor of hidden layers')
+    parser.add_argument('--n_layers', type=int, default=3, help='layer size')
+    parser.add_argument('--activation', type=str, default='reglu', choices=['reglu', 'geglu', 'relu', 'gelu'])
+    parser.add_argument('--normalization', type=str, default='batchnorm', choices=['batchnorm', 'layernorm'])
+    parser.add_argument('--r_dropout', type=float, default=0.2, help='residual dropout prob')
+
+    parser.add_argument('--location', type=str, required=True, help='location of experiment')
     parser.add_argument('--version', type=int, default=None, help='experiment version')
     args = parser.parse_args()
     args.root_path = os.path.join('data', args.location)
@@ -52,7 +62,14 @@ if __name__ == '__main__':
 
     # when train the model
     if args.stage in ['train', 'fit']:
-        model = MLP(args.input_dim, args.layers_dim, args.dropout)
+        if args.model == 'mlp':
+            model = MLP(args.input_dim, args.layers_dim, args.dropout)
+        else:
+            model = ResNet(
+                d_numerical=args.input_dim, d=args.dim, d_hidden_factor=args.hidden_factor,
+                n_layers=args.n_layers, activation=args.activation, normalization=args.normalization,
+                hidden_dropout=args.dropout, residual_dropout=args.r_dropout
+            )
         logger = TensorBoardLogger(save_dir='lightning_logs', name=args.location, version=args.version)
         log_dir = logger.log_dir
         ckpt_ver = f'version_{logger.version}'
@@ -77,21 +94,32 @@ if __name__ == '__main__':
             else:
                 raise FileNotFoundError('The directory where the checkpoint file is saved does not exist.')
 
-        model = MLP.load_from_checkpoint(
-            f'lightning_logs/{args.location}/{ckpt_ver}/last.ckpt',
-            input_dim=args.input_dim, layers_dim=args.layers_dim, dropout=args.dropout
-        )
+        if args.model == 'mlp':
+            model = MLP.load_from_checkpoint(
+                f'lightning_logs/{args.location}/{ckpt_ver}/last.ckpt',
+                input_dim=args.input_dim, layers_dim=args.layers_dim, dropout=args.dropout
+            )
+        else:
+            model = ResNet.load_from_checkpoint(
+                f'lightning_logs/{args.location}/{ckpt_ver}/last.ckpt',
+                d_numerical=args.input_dim, d=args.dim, d_hidden_factor=args.hidden_factor,
+                n_layers=args.n_layers, activation=args.activation, normalization=args.normalization,
+                hidden_dropout=args.h_dropout, residual_dropout=args.r_dropout
+            )
         logger = False
         log_dir = f'lightning_logs/{args.location}'
 
     ld = '-'.join(map(str, args.layers_dim))
     div = os.path.splitext(args.data_path)[0].split('_')[1]
-    model_name = f'{args.model}_{args.location}_{div}_ld{ld}_{ckpt_ver}'
+    if args.model == 'mlp':
+        model_name = f'{args.model}_{args.location}_{div}_ld{ld}_{ckpt_ver}'
+    else:
+        model_name = f'{args.model}_{args.location}_{div}_dim{args.dim}_hf{args.hidden_factor}' \
+                     f'_nl{args.n_layers}_{ckpt_ver}'
     print(f'model name: {model_name}')
     print('\n========================================\n')
 
     model_checkpoint = ModelCheckpoint(
-        #dirpath=f'lightning_logs/{args.location}',
         dirpath=log_dir,
         filename='{epoch}-{val_loss:.3f}',
         monitor='val_loss',

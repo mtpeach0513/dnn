@@ -10,6 +10,7 @@ class MLP(pl.LightningModule):
     def __init__(self,
                  input_dim: int, layers_dim: List[int], dropout: float) -> None:
         super(MLP, self).__init__()
+        self.save_hyperparameters()
 
         self.layers = nn.ModuleList(
             [
