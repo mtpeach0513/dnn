@@ -42,6 +42,8 @@ if __name__ == '__main__':
     parser.add_argument('--normalization', type=str, default='batchnorm', choices=['batchnorm', 'layernorm'])
     parser.add_argument('--r_dropout', type=float, default=0.2, help='residual dropout prob')
 
+    # experiment params
+    parser.add_argument('--max_epochs', type=int, default=300, help='max epochs')
     parser.add_argument('--location', type=str, required=True, help='location of experiment')
     parser.add_argument('--version', type=int, default=None, help='experiment version')
     args = parser.parse_args()
@@ -144,7 +146,7 @@ if __name__ == '__main__':
             #early_stopping
         ],
         logger=logger,
-        max_epochs=500,
+        max_epochs=args.max_epochs,
         min_epochs=conf.num_epochs,
     )
     if args.stage in ['train', 'fit']:
