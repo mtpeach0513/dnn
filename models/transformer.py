@@ -20,6 +20,59 @@ class TransformerModel(pl.LightningModule):
                  d_out=1) -> None:
         super(TransformerModel, self).__init__()
 
+        self.transformer = Transformer(
+            d_numerical=d_numerical,
+            categories=categories,
+            token_bias=token_bias,
+            n_layers=n_layers,
+            d_token=d_token,
+            n_heads=n_heads,
+            d_ffn_factor=d_ffn_factor,
+            attn_dropout=attn_dropout,
+            ffn_dropout=ffn_dropout,
+            residual_dropout=residual_dropout,
+            activation=activation,
+            prenormalization=prenormalization,
+            initialization=initializaion,
+            kv_compression=kv_compression,
+            kv_compression_sharing=kv_compression_sharing,
+            d_out=d_out
+        )
+        self.save_hyperparameters()
+        self.criterion = nn.MSELoss()
+
+    def forward(self, x_num: Tensor, x_cat: Optional[Tensor]) -> Tensor:
+        x = self.transformer(x_num, x_cat)
+        return x
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-4, weight_decay=1e-5)
+        return optimizer
+
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x, None)
+        loss = self.criterion(y_hat, y)
+        self.log('train_loss', loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x, None)
+        loss = self.criterion(y_hat, y)
+        self.log('val_loss', loss)
+
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x, None)
+        loss = self.criterion(y_hat, y)
+        self.log('test_loss', loss)
+
+    def predict_step(self, batch, batch_idx, dataloader_idx=0):
+        x, y = batch
+        y_hat = self(x, None)
+        return y_hat
+
 
 class Tokenizer(nn.Module):
     category_offsets: Optional[Tensor]
@@ -57,7 +110,7 @@ class Tokenizer(nn.Module):
         x_some = x_num if x_cat is None else x_cat
         assert x_some is not None
         x_num = torch.cat(
-            [torch.ones(len(x_some), 1)]    # [CLS]
+            [torch.ones(len(x_some), 1, device=x_some.device)]    # [CLS]
             + ([] if x_num is None else [x_num]),
             dim=1
         )
@@ -70,7 +123,7 @@ class Tokenizer(nn.Module):
         if self.bias is not None:
             bias = torch.cat(
                 [
-                    torch.zeros(1, self.bias.shape[1]),
+                    torch.zeros(1, self.bias.shape[1], device=x.device),
                     self.bias,
                 ]
             )
@@ -238,7 +291,7 @@ class Transformer(nn.Module):
             x_residual = F.dropout(x_residual, self.residual_dropout, training=self.training)
         x = x + x_residual
         if not self.prenormlization:
-            x = layer[f'norm{norm_idx}']
+            x = layer[f'norm{norm_idx}'](x)
         return x
 
     def forward(self, x_num: Tensor, x_cat: Optional[Tensor]) -> Tensor:
