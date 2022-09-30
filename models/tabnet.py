@@ -17,7 +17,7 @@ class TabNetModel(pl.LightningModule):
                  cat_idxs=[], cat_dims=[], cat_emb_dim=1,
                  n_independent=2, n_shared=2, epsilon=1e-15,
                  virtual_batch_size=128, momentum=0.02,
-                 mask_type='sparsemax'):
+                 mask_type='sparsemax', lambda_sparse=1e-3):
         super(TabNetModel, self).__init__()
 
         self.tabnet = TabNet(
@@ -37,43 +37,46 @@ class TabNetModel(pl.LightningModule):
             momentum,
             mask_type
         )
+        self.lambda_sparse = lambda_sparse
         self.save_hyperparameters()
         self.criterion = nn.MSELoss()
 
     def forward(self, x):
-        x, _ = self.tabnet(x)
+        x, m_loss = self.tabnet(x)
         x = x.squeeze(-1)
-        return x
+        return x, m_loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.RAdam(self.parameters(), lr=Config.lr)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, factor=0.1, min_lr=0, verbose=True
+        optimizer = torch.optim.Adam(self.parameters(), lr=2e-2)
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer, gamma=0.5, step_size=10
         )
-        return {'optimizer': optimizer, 'lr_scheduler': scheduler, 'monitor': 'val_loss'}
+        return [optimizer], [scheduler]
 
     def training_step(self, batch, batch_idx):
         x, y = batch
-        y_hat = self(x)
+        y_hat, m_loss = self(x)
         loss = self.criterion(y_hat, y)
+        loss = loss - self.lambda_sparse * m_loss
         self.log('train_loss', loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
         x, y = batch
-        y_hat = self(x)
+        y_hat, m_loss = self(x)
         loss = self.criterion(y_hat, y)
+        loss = loss - self.lambda_sparse * m_loss
         self.log('val_loss', loss)
 
     def test_step(self, batch, batch_idx):
         x, y = batch
-        y_hat = self(x)
+        y_hat, _ = self(x)
         loss = self.criterion(y_hat, y)
         self.log('test_loss', loss)
 
     def predict_step(self, batch, batch_idex, dataloader_idx=0):
         x, y = batch
-        y_hat = self(x)
+        y_hat, _ = self(x)
         return y_hat
 
 
