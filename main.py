@@ -11,6 +11,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 
 from models.mlp import MLP
 from models.resnet import ResNet
+from models.tabnet import TabNetModel
 from data.dataloader import MyDataModule, MyDataset
 from utils.configure import Config
 
@@ -22,7 +23,8 @@ if __name__ == '__main__':
     start = time.time()
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, default='mlp', choices=['mlp', 'resnet'], help='model of experiment')
+    parser.add_argument(
+        '--model', type=str, default='mlp', choices=['mlp', 'resnet', 'tabnet'], help='model of experiment')
     parser.add_argument(
         '--stage', type=str, default='train', choices=['train', 'fit', 'test', 'pred', 'predict'],
         help='model behaviour stage, option: [train(fit), test(pred, predict)]')
@@ -42,8 +44,24 @@ if __name__ == '__main__':
     parser.add_argument('--normalization', type=str, default='batchnorm', choices=['batchnorm', 'layernorm'])
     parser.add_argument('--r_dropout', type=float, default=0.2, help='residual dropout prob')
 
+    # TabNet hparms
+    parser.add_argument('--n_da', type=int, default=8,
+                        help='n_d: width of the decision prediction layer.'
+                             'n_a: witdh of the attention embedding for each mask. both is same value.')
+    parser.add_argument('--n_steps', type=int, default=3, help='number of steps in the architecture')
+    parser.add_argument('--gamma', type=float, default=1.3,
+                        help='this is coefficient for feature reusage in the masks.'
+                             'a value close to 1 will make mask selection least correlated between layers.')
+    parser.add_argument('--n_independent', type=int, default=2, help='number of independent GLU layers at each step')
+    parser.add_argument('--n_shared', type=int, default=2, help='number of shared GLU at each step')
+    parser.add_argument('--lambda_sparse', type=float, default=1e-3,
+                        help='the bigger this coefficient is,'
+                             ' the sparser your model will be in terms of feature selection')
+    parser.add_argument('--mask_type', type=str, default='sparsemax', choices=['sparsemax', 'entmax'],
+                        help='this is the masking function to use for selecting features')
+
     # experiment params
-    parser.add_argument('--max_epochs', type=int, default=300, help='max epochs')
+    parser.add_argument('--max_epochs', type=int, default=100, help='max epochs')
     parser.add_argument('--location', type=str, required=True, help='location of experiment')
     parser.add_argument('--version', type=int, default=None, help='experiment version')
     args = parser.parse_args()
@@ -66,12 +84,20 @@ if __name__ == '__main__':
     if args.stage in ['train', 'fit']:
         if args.model == 'mlp':
             model = MLP(args.input_dim, args.layers_dim, args.dropout)
-        else:
+        elif args.model == 'resnet':
             model = ResNet(
                 d_numerical=args.input_dim, d=args.dim, d_hidden_factor=args.hidden_factor,
                 n_layers=args.n_layers, activation=args.activation, normalization=args.normalization,
                 hidden_dropout=args.dropout, residual_dropout=args.r_dropout
             )
+        else:
+            model = TabNetModel(
+                input_dim=args.input_dim, n_d=args.n_da, n_a=args.n_da, n_steps=args.n_steps,
+                gamma=args.gamma, n_independent=args.n_independent, n_shared=args.n_shared,
+                lambda_sparse=args.lambda_sparse, mask_type=args.mask_type
+            )
+            data_module.batch_size = 1024
+
         logger = TensorBoardLogger(save_dir='lightning_logs', name=args.location, version=args.version)
         log_dir = logger.log_dir
         ckpt_ver = f'version_{logger.version}'
@@ -99,25 +125,33 @@ if __name__ == '__main__':
         if args.model == 'mlp':
             model = MLP.load_from_checkpoint(
                 f'lightning_logs/{args.location}/{ckpt_ver}/last.ckpt',
-                input_dim=args.input_dim, layers_dim=args.layers_dim, dropout=args.dropout
-            )
-        else:
+                input_dim=args.input_dim)
+        elif args.model == 'resnet':
             model = ResNet.load_from_checkpoint(
                 f'lightning_logs/{args.location}/{ckpt_ver}/last.ckpt',
-                d_numerical=args.input_dim, d=args.dim, d_hidden_factor=args.hidden_factor,
-                n_layers=args.n_layers, activation=args.activation, normalization=args.normalization,
-                hidden_dropout=args.h_dropout, residual_dropout=args.r_dropout
-            )
+                d_numerical=args.input_dim)
+        else:
+            model = TabNetModel.load_from_checkpoint(
+                f'lightning_logs/{args.location}/{ckpt_ver}/last.ckpt',
+                input_dim=args.input_dim)
+            data_module.batch_size = 1024
+
         logger = False
         log_dir = f'lightning_logs/{args.location}'
 
     ld = '-'.join(map(str, args.layers_dim))
-    div = os.path.splitext(args.data_path)[0].split('_')[1]
+    try:
+        div = os.path.splitext(args.data_path)[0].split('_')[1]
+    except IndexError:
+        div = 'all'
     if args.model == 'mlp':
         model_name = f'{args.model}_{args.location}_{div}_ld{ld}_{ckpt_ver}'
-    else:
+    elif args.model == 'resnet':
         model_name = f'{args.model}_{args.location}_{div}_dim{args.dim}_hf{args.hidden_factor}' \
                      f'_nl{args.n_layers}_{ckpt_ver}'
+    else:
+        model_name = f'{args.model}_{args.location}_{div}_nda{args.n_da}_ns{args.n_steps}' \
+                     f'_{args.mask_type}_{ckpt_ver}'
     print(f'model name: {model_name}')
     print('\n========================================\n')
 
@@ -161,10 +195,11 @@ if __name__ == '__main__':
     #np.save('prediction', predictions)
     df_test = pd.read_csv(os.path.join(args.root_path, args.test_path), index_col=0, usecols=['date', 'inflow'])
     predictions = pd.Series(predictions[:, 0], index=df_test.index, name='prediction')
+    predictions = predictions.mask(predictions <= 0, 0)
     output = pd.concat([df_test, predictions], axis=1)
     print(f'\n========================================\n')
     output_dir = os.path.join('output', args.location)
     os.makedirs(output_dir, exist_ok=True)
     output.to_csv(os.path.join(output_dir, f'{model_name}.csv'), encoding='utf-8-sig')
-    print(f'output file was saved. output/{model_name}.csv')
+    print(f'output file was saved. output/{args.location}/{model_name}.csv')
     print(f'elapsed time: {time.time() - start:.2f} [sec]')

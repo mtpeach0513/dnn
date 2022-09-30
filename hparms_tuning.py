@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 
 import optuna
@@ -8,12 +9,17 @@ import torch
 
 from data.dataloader import MyDataModule, MyDataset
 from models.resnet import ResNet
+from models.tabnet import TabNetModel
 from utils.configure import Config
+
+import warnings
+warnings.filterwarnings('ignore')
 
 
 class HparamsTuning:
     def __init__(self):
         parser = argparse.ArgumentParser()
+        parser.add_argument('--model', type=str, required=True, choices=['resnet', 'tabnet'], help='model of experiment')
         parser.add_argument('--data_path', type=str, default='train.csv', help='data file')
         parser.add_argument('--test_path', type=str, default='test.csv', help='test data file')
         parser.add_argument('--location', type=str, required=True, help='location of experiment')
@@ -24,48 +30,92 @@ class HparamsTuning:
             help="Activate the pruning feature. `MedianPruner` stops unpromising "
                  "trials at the early stages of training.",
         )
+        parser.add_argument('--max_epochs', type=int, default=100, help='max epochs')
+        parser.add_argument('--n_trials', type=int, default=100, help='num of trials hparams tuning')
         args = parser.parse_args()
         args.root_path = os.path.join('data', args.location)
+
+        print('\n========================================\n')
+        print('Args in experiment:')
+        print(args)
+        print('\n========================================\n')
+
+        self.model = args.model
         self.root_path = args.root_path
         self.data_path = args.data_path
         self.test_path = args.test_path
         self.location = args.location
+        self.max_epochs = args.max_epochs
+        self.n_trials = args.n_trials
         self.pruning = args.pruning
         self.conf = Config()
 
     def objective(self, trial: optuna.trial.Trial) -> float:
-        dim = trial.suggest_int('dim', 1, 8)
-        hidden_factor = trial.suggest_int('hidden_factor', 1, 4)
-        n_layers = trial.suggest_int('n_layers', 1, 64)
-        activation = trial.suggest_categorical('activation', ['reglu', 'geglu', 'relu', 'gelu'])
-        normalization = trial.suggest_categorical('normalization', ['batchnorm', 'layernorm'])
-        dropout = trial.suggest_uniform('dropout', 0, 0.5)
-        r_dropout = trial.suggest_uniform('r_dropout', 0, 0.5)
         dataset = MyDataset(root_path=self.root_path, data_path=self.data_path)
-        input_dim = dataset.data_x.shape[1]
-        model = ResNet(
-            d_numerical=input_dim, d=dim, d_hidden_factor=hidden_factor,
-            n_layers=n_layers, activation=activation, normalization=normalization,
-            hidden_dropout=dropout, residual_dropout=r_dropout
-        )
         datamodule = MyDataModule(
             config=self.conf, root_path=self.root_path,
             data_path=self.data_path, test_path=self.test_path
         )
+        input_dim = dataset.data_x.shape[1]
 
+        if self.model == 'resnet':
+            # ResNet params
+            dim = trial.suggest_int('dim', 4, 8)
+            hidden_factor = trial.suggest_int('hidden_factor', 1, 4)
+            n_layers = trial.suggest_int('n_layers', 1, 64)
+            activation = trial.suggest_categorical('activation', ['reglu', 'geglu', 'relu', 'gelu'])
+            normalization = trial.suggest_categorical('normalization', ['batchnorm', 'layernorm'])
+            dropout = trial.suggest_discrete_uniform('dropout', 0, 0.5, 0.1)
+            r_dropout = trial.suggest_discrete_uniform('r_dropout', 0, 0.5, 0.1)
+
+            model = ResNet(
+                d_numerical=input_dim, d=dim, d_hidden_factor=hidden_factor,
+                n_layers=n_layers, activation=activation, normalization=normalization,
+                hidden_dropout=dropout, residual_dropout=r_dropout
+            )
+
+            hyperparameters = dict(
+                dim=dim, hidden_factor=hidden_factor, n_layers=n_layers,
+                activation=activation, normalization=normalization,
+                dropout=dropout, r_dropout=r_dropout
+            )
+
+        else:
+            # TabNet params
+            n_d_a = trial.suggest_int('n_d', 4, 64)
+            n_steps = trial.suggest_int('n_steps', 3, 10)
+            gamma = trial.suggest_discrete_uniform('gamma', 1.0, 2.0, 0.1)
+            n_independent = trial.suggest_int('n_independent', 1, 5)
+            n_shared = trial.suggest_int('n_shared', 1, 5)
+            lambda_sparse = trial.suggest_loguniform('lambda_sparse', 1e-6, 1e-3)
+            mask_type = trial.suggest_categorical('mask_type', ['sparsemax', 'entmax'])
+
+            model = TabNetModel(
+                input_dim=input_dim, n_d=n_d_a, n_a=n_d_a, n_steps=n_steps, gamma=gamma,
+                n_independent=n_independent, n_shared=n_shared,
+                lambda_sparse=lambda_sparse, mask_type=mask_type
+            )
+            datamodule.batch_size = 1024
+
+            hyperparameters = dict(
+                n_d=n_d_a, n_a=n_d_a, n_steps=n_steps, gamma=gamma,
+                n_independent=n_independent, n_shared=n_shared,
+                lambda_sparse=lambda_sparse, mask_type=mask_type
+            )
+
+        print('\n========================================\n')
+        print('Hyper parameters in experiment:')
+        print(hyperparameters)
+        print('\n========================================\n')
         trainer = pl.Trainer(
             logger=True,
             enable_checkpointing=False,
             gpus=1 if torch.cuda.is_available() else None,
             deterministic=True,
-            max_epochs=500,
-            callbacks=[PyTorchLightningPruningCallback(trial, monitor='val_loss')],
+            max_epochs=self.max_epochs,
+            #callbacks=[PyTorchLightningPruningCallback(trial, monitor='val_loss')],
         )
-        hyperparameters = dict(
-            dim=dim, hidden_factor=hidden_factor, n_layers=n_layers,
-            activation=activation, normalization=normalization,
-            dropout=dropout, r_dropout=r_dropout
-        )
+
         trainer.logger.log_hyperparams(hyperparameters)
         trainer.fit(model, datamodule)
         return trainer.callback_metrics['val_loss'].item()
@@ -76,7 +126,7 @@ class HparamsTuning:
         )
 
         study = optuna.create_study(pruner=pruner)
-        study.optimize(self.objective, n_trials=100, timeout=1800)
+        study.optimize(self.objective, n_trials=self.n_trials)
         print(f'Number of finished trials: {len(study.trials)}')
         print('Best trials:')
         trial = study.best_trial
@@ -84,8 +134,11 @@ class HparamsTuning:
         print(f'    Params:')
         for key, value in trial.params.items():
             print(f'    {key}: {value}')
+        root_dir = os.path.join('lightning_logs', self.location)
+        os.makedirs(root_dir, exist_ok=True)
+        with open(os.path.join(root_dir, 'best_params.json'), mode='w') as f:
+            json.dump(trial.params, f, indent=4)
 
 
 if __name__ == '__main__':
-    hparmstuning = HparamsTuning()
-    hparmstuning.run()
+    HparamsTuning().run()
