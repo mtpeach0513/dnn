@@ -10,6 +10,7 @@ import torch
 from data.dataloader import MyDataModule, MyDataset
 from models.resnet import ResNet
 from models.tabnet import TabNetModel
+from models.transformer import TransformerModel
 from utils.configure import Config
 
 import warnings
@@ -19,7 +20,7 @@ warnings.filterwarnings('ignore')
 class HparamsTuning:
     def __init__(self):
         parser = argparse.ArgumentParser()
-        parser.add_argument('--model', type=str, required=True, choices=['resnet', 'tabnet'], help='model of experiment')
+        parser.add_argument('--model', type=str, required=True, choices=['resnet', 'tabnet', 'transformer'], help='model of experiment')
         parser.add_argument('--data_path', type=str, default='train.csv', help='data file')
         parser.add_argument('--test_path', type=str, default='test.csv', help='test data file')
         parser.add_argument('--location', type=str, required=True, help='location of experiment')
@@ -80,7 +81,7 @@ class HparamsTuning:
                 dropout=dropout, r_dropout=r_dropout
             )
 
-        else:
+        elif self.model == 'tabnet':
             # TabNet params
             n_d_a = trial.suggest_int('n_d', 4, 64)
             n_steps = trial.suggest_int('n_steps', 3, 10)
@@ -103,6 +104,25 @@ class HparamsTuning:
                 lambda_sparse=lambda_sparse, mask_type=mask_type
             )
 
+        else:
+            n_layers = trial.suggest_int('n_layers', 1, 4)
+            d_token = trial.suggest_int('d_token', 64, 512, 64)
+            residual_dropout = trial.suggest_discrete_uniform('residual_dropout', 0, 0.2, 0.1)
+            attn_dropout = trial.suggest_discrete_uniform('attn_dropout', 0, 0.5, 0.1)
+            ffn_dropout = trial.suggest_discrete_uniform('ffn_dropout', 0, 0.5, 0.1)
+            d_ffn_factor = trial.suggest_discrete_uniform('d_ffn_factor', 2/3, 8/3, 1/3)
+
+            model = TransformerModel(
+                d_numerical=input_dim, categories=None,
+                n_layers=n_layers, d_token=d_token, d_ffn_factor=d_ffn_factor,
+                attn_dropout=attn_dropout, ffn_dropout=ffn_dropout, residual_dropout=residual_dropout
+            )
+
+            hyperparameters = dict(
+                n_layers=n_layers, d_token=d_token, d_ffn_factor=d_ffn_factor,
+                attn_dropout=attn_dropout, ffn_dropout=ffn_dropout, residual_dropout=residual_dropout
+            )
+
         print('\n========================================\n')
         print('Hyper parameters in experiment:')
         print(hyperparameters)
@@ -118,7 +138,8 @@ class HparamsTuning:
 
         trainer.logger.log_hyperparams(hyperparameters)
         trainer.fit(model, datamodule)
-        return trainer.callback_metrics['val_loss'].item()
+        trainer.test(model, datamodule)
+        return trainer.callback_metrics['test_loss'].item()
 
     def run(self):
         pruner: optuna.pruners.BasePruner = (

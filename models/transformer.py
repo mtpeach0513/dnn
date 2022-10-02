@@ -13,7 +13,7 @@ from utils.tools import get_activation_fn, get_nonglu_activation_fn
 class TransformerModel(pl.LightningModule):
     def __init__(self, d_numerical: int, categories: Optional[List[int]],
                  token_bias=True,
-                 n_layers=3, d_token=192, n_heads=8, d_ffn_factor=3/4,
+                 n_layers=3, d_token=192, n_heads=8, d_ffn_factor=4/3,
                  attn_dropout=0.2, ffn_dropout=0.1, residual_dropout=0.0,
                  activation='reglu', prenormalization=False, initializaion='kaiming',
                  kv_compression=None, kv_compression_sharing=None,

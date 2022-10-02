@@ -12,6 +12,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from models.mlp import MLP
 from models.resnet import ResNet
 from models.tabnet import TabNetModel
+from models.transformer import TransformerModel
 from data.dataloader import MyDataModule, MyDataset
 from utils.configure import Config
 
@@ -24,7 +25,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--model', type=str, default='mlp', choices=['mlp', 'resnet', 'tabnet'], help='model of experiment')
+        '--model', type=str, default='mlp', choices=['mlp', 'resnet', 'tabnet', 'transformer'], help='model of experiment')
     parser.add_argument(
         '--stage', type=str, default='train', choices=['train', 'fit', 'test', 'pred', 'predict'],
         help='model behaviour stage, option: [train(fit), test(pred, predict)]')
@@ -34,7 +35,12 @@ if __name__ == '__main__':
 
     # MLP hparams
     parser.add_argument('--layers_dim', nargs='+', type=int, default=[64, 32], help='dimensions of model layers')
+
+    # dropout
     parser.add_argument('--dropout', type=float, default=0.5, help='dropout prob')
+    parser.add_argument('--attn_dropout', type=float, default=0.2)
+    parser.add_argument('--ffn_dropout', type=float, default=0.1)
+    parser.add_argument('--r_dropout', type=float, default=0.2, help='residual dropout prob')
 
     # ResNet hparams
     parser.add_argument('--dim', type=int, default=32, help='dimensions of first layer')
@@ -42,7 +48,6 @@ if __name__ == '__main__':
     parser.add_argument('--n_layers', type=int, default=3, help='layer size')
     parser.add_argument('--activation', type=str, default='reglu', choices=['reglu', 'geglu', 'relu', 'gelu'])
     parser.add_argument('--normalization', type=str, default='batchnorm', choices=['batchnorm', 'layernorm'])
-    parser.add_argument('--r_dropout', type=float, default=0.2, help='residual dropout prob')
 
     # TabNet hparms
     parser.add_argument('--n_da', type=int, default=8,
@@ -59,6 +64,10 @@ if __name__ == '__main__':
                              ' the sparser your model will be in terms of feature selection')
     parser.add_argument('--mask_type', type=str, default='sparsemax', choices=['sparsemax', 'entmax'],
                         help='this is the masking function to use for selecting features')
+
+    # Transformer hparams
+    parser.add_argument('--d_token', type=int, default=192)
+    parser.add_argument('--d_ffn_factor', type=float, default=4/3)
 
     # experiment params
     parser.add_argument('--max_epochs', type=int, default=100, help='max epochs')
@@ -90,13 +99,19 @@ if __name__ == '__main__':
                 n_layers=args.n_layers, activation=args.activation, normalization=args.normalization,
                 hidden_dropout=args.dropout, residual_dropout=args.r_dropout
             )
-        else:
+        elif args.model == 'tabnet':
             model = TabNetModel(
                 input_dim=args.input_dim, n_d=args.n_da, n_a=args.n_da, n_steps=args.n_steps,
                 gamma=args.gamma, n_independent=args.n_independent, n_shared=args.n_shared,
                 lambda_sparse=args.lambda_sparse, mask_type=args.mask_type
             )
             data_module.batch_size = 1024
+        else:
+            model = TransformerModel(
+                d_numerical=args.input_dim, categories=None, n_layers=args.n_layers,
+                d_token=args.d_token, d_ffn_factor=args.d_ffn_factor,
+                ffn_dropout=args.ffn_dropout, attn_dropout=args.attn_dropout, residual_dropout=args.r_dropout,
+            )
 
         logger = TensorBoardLogger(save_dir='lightning_logs', name=args.location, version=args.version)
         log_dir = logger.log_dir
@@ -130,11 +145,15 @@ if __name__ == '__main__':
             model = ResNet.load_from_checkpoint(
                 f'lightning_logs/{args.location}/{ckpt_ver}/last.ckpt',
                 d_numerical=args.input_dim)
-        else:
+        elif args.model == 'tabnet':
             model = TabNetModel.load_from_checkpoint(
                 f'lightning_logs/{args.location}/{ckpt_ver}/last.ckpt',
                 input_dim=args.input_dim)
             data_module.batch_size = 1024
+        else:
+            model = TransformerModel.load_from_checkpoint(
+                f'lightning_logs/{args.location}/{ckpt_ver}/last.ckpt',
+                d_numerical=args.input_dim, categories=None)
 
         logger = False
         log_dir = f'lightning_logs/{args.location}'
@@ -149,9 +168,12 @@ if __name__ == '__main__':
     elif args.model == 'resnet':
         model_name = f'{args.model}_{args.location}_{div}_dim{args.dim}_hf{args.hidden_factor}' \
                      f'_nl{args.n_layers}_{ckpt_ver}'
-    else:
+    elif args.model == 'tabnet':
         model_name = f'{args.model}_{args.location}_{div}_nda{args.n_da}_ns{args.n_steps}' \
                      f'_{args.mask_type}_{ckpt_ver}'
+    else:
+        model_name = f'{args.model}_{args.location}_{div}_nl{args.n_layers}' \
+                     f'_dim{args.d_token}_{ckpt_ver}'
     print(f'model name: {model_name}')
     print('\n========================================\n')
 
