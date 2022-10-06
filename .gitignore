@@ -148,4 +148,5 @@ cython_debug/
 *.npy
 data/*/dataset.py
 lightning_logs/
+output/
 notebook/

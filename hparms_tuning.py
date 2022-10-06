@@ -61,7 +61,7 @@ class HparamsTuning:
 
         if self.model == 'resnet':
             # ResNet params
-            dim = trial.suggest_int('dim', 4, 8)
+            dim = trial.suggest_int('dim', 4, 32, 4)
             hidden_factor = trial.suggest_int('hidden_factor', 1, 4)
             n_layers = trial.suggest_int('n_layers', 1, 64)
             activation = trial.suggest_categorical('activation', ['reglu', 'geglu', 'relu', 'gelu'])
@@ -138,8 +138,7 @@ class HparamsTuning:
 
         trainer.logger.log_hyperparams(hyperparameters)
         trainer.fit(model, datamodule)
-        trainer.test(model, datamodule)
-        return trainer.callback_metrics['test_loss'].item()
+        return trainer.callback_metrics['val_loss'].item()
 
     def run(self):
         pruner: optuna.pruners.BasePruner = (

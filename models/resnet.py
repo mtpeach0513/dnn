@@ -81,9 +81,9 @@ class ResNet(pl.LightningModule):
         return x
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=Config.lr)
+        optimizer = torch.optim.RAdam(self.parameters(), lr=Config.lr)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, factor=0.5, min_lr=0, verbose=True
+            optimizer, factor=0.1, min_lr=0, verbose=False
         )
         return {'optimizer': optimizer, 'lr_scheduler': scheduler, 'monitor': 'val_loss'}
 

@@ -34,7 +34,6 @@ class Config:
         'random_state': 42,
         'verbose': -1
     }
-    n_splits = 5
 
 
 def prepare_dataset(root_path='data',
@@ -47,13 +46,13 @@ def prepare_dataset(root_path='data',
     return train, test, train_y, test_y
 
 
-def train(train_X, train_y, kf='kf'):
-    assert kf in ['kf', 'group']
+def train(train_X, train_y, args: argparse.Namespace):
+    assert args.cv_type in ['kf', 'group']
     models = []
-    data_X = train_X if kf == 'kf' else train_X.id.unique()
-    cv = KFold(n_splits=Config.n_splits, shuffle=True, random_state=42)
+    data_X = train_X if args.cv_type == 'kf' else train_X.id.unique()
+    cv = KFold(n_splits=args.n_splits, shuffle=True, random_state=42)
     for tr_idx, val_idx in tqdm.tqdm(cv.split(data_X), total=cv.get_n_splits(), desc='k-fold'):
-        if kf == 'kf':
+        if args.cv_type == 'kf':
             X_tr, X_val = data_X.iloc[tr_idx], data_X.iloc[val_idx]
             y_tr, y_val = train_y.iloc[tr_idx], train_y.iloc[val_idx]
         else:
@@ -89,22 +88,46 @@ def output_average_predict(models, X):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_path', type=str, default='train.csv', help='data file')
-    parser.add_argument('--test_path', type=str, default='test.csv', help='test data file')
+    parser.add_argument('--data_path', type=str, default='train_all.csv', help='data file')
+    parser.add_argument('--test_path', type=str, default='test_all.csv', help='test data file')
     parser.add_argument('--target', type=str, default='inflow', help='target feature')
-    parser.add_argument('--cv_type', type=str, default='group', help='type of cross validation, options:[kf, group]')
-    parser.add_argument('--location', type=str, default='miharu', help='location of experiment')
+    parser.add_argument('--cv_type', type=str, default='kf', choices=['kf', 'group'],
+                        help='type of cross validation, options:[kf, group]')
+    parser.add_argument('--n_splits', default=4, type=int, help='num of splits for cross-validation')
+    parser.add_argument('--location', type=str, required=True, help='location of experiment')
+    parser.add_argument('--version', type=int, default=None, help='experiment version')
     args = parser.parse_args()
     args.root_path = os.path.join('data', args.location)
 
     print(f'\n========================================\n')
     print('Args in experiment:')
     print(args)
-    location = args.root_path.split('/')[-1]
-    print(f'Location: {location}')
-    model_name = f'lgbm_{args.location}_{os.path.splitext(args.data_path)[0]}_{args.target}_{args.cv_type}'
-    model_dir = os.path.join('models', location)
+    print('\n========================================\n')
+    try:
+        div = '-'.join(os.path.splitext(args.data_path)[0].split('_')[1:])
+    except IndexError:
+        div = 'all'
+    model_name = f'lgbm_{args.location}_{div}_{args.cv_type}_{args.n_splits}splits'
+    model_dir = os.path.join('models', args.location)
     os.makedirs(model_dir, exist_ok=True)
+
+    if args.version is None:
+        existing_versions = []
+        for f in os.listdir(model_dir):
+            b = os.path.splitext(f)[0]
+            if os.path.isfile(os.path.join(model_dir, f)) and 'version' in b:
+                file_ver = b.split('_')[-1].replace('/', '')
+                existing_versions.append(int(file_ver))
+        if len(existing_versions) == 0:
+            ckpt_ver = 'version_0'
+        else:
+            ckpt_ver = max(existing_versions) + 1
+            ckpt_ver = f'version_{ckpt_ver}'
+    else:
+        ckpt_ver = f'version_{args.version}'
+
+    model_name = model_name + '_' + ckpt_ver
+    print(f'model name: {model_name}\n')
     model_path = os.path.join(model_dir, model_name + '.pickle')
 
     train_X, test_X, train_y, test_y = prepare_dataset(root_path=args.root_path, data_path=args.data_path,
@@ -114,7 +137,7 @@ def main():
         with open(model_path, mode='rb') as f:
             models = pickle.load(f)
     else:
-        models = train(train_X, train_y, kf=args.cv_type)
+        models = train(train_X, train_y, args)
         with open(model_path, mode='wb') as f:
             pickle.dump(models, f)
 
@@ -129,10 +152,10 @@ def main():
     print(f'RMSE: {np.sqrt(mean_squared_error(test_y, preds_average)):.3f}')
 
     print(f'\n========================================\n')
-    output_dir = os.path.join('output', location)
+    output_dir = os.path.join('output', args.location, 'lgbm')
     os.makedirs(output_dir, exist_ok=True)
     output.to_csv(os.path.join(output_dir, f'{model_name}.csv'), encoding='utf-8-sig')
-    print(f'output file was saved. output/{model_name}.csv')
+    print(f'output file was saved. {os.getcwd()}/output/{args.location}/lgbm/{model_name}.csv')
     print(f'\n========================================\n')
 
 

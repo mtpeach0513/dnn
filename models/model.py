@@ -5,6 +5,24 @@ import pytorch_lightning as pl
 from utils.configure import Config
 
 
+class Ensemble(nn.Module):
+    def __init__(self, modelA, modelB, modelC, input):
+        super(Ensemble, self).__init__()
+        self.modelA = modelA
+        self.modelB = modelB
+        self.modelC = modelC
+        self.fc1 = nn.Linear(input, 1)
+
+    def forward(self, x):
+        out1 = self.modelA(x)
+        out2 = self.modelB(x)
+        out3 = self.modelC(x)
+
+        out = out1 + out2 + out3
+        x = self.fc1(out)
+        x = x.squeeze(-1)
+        return x
+
 class BasicNet(pl.LightningModule):
     def __init__(self, input_dim):
         super(BasicNet, self).__init__()

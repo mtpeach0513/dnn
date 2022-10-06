@@ -93,32 +93,54 @@ if __name__ == '__main__':
     if args.stage in ['train', 'fit']:
         if args.model == 'mlp':
             model = MLP(args.input_dim, args.layers_dim, args.dropout)
+            hparams = dict(input_dim=args.input_dim, layers_dim=args.layers_dim, dropout=args.dropout)
+
         elif args.model == 'resnet':
             model = ResNet(
                 d_numerical=args.input_dim, d=args.dim, d_hidden_factor=args.hidden_factor,
                 n_layers=args.n_layers, activation=args.activation, normalization=args.normalization,
                 hidden_dropout=args.dropout, residual_dropout=args.r_dropout
             )
+            hparams = dict(
+                d_numerical=args.input_dim, d=args.dim, d_hidden_factor=args.hidden_factor,
+                n_layers=args.n_layers, activation=args.activation, normalization=args.normalization,
+                hidden_dropout=args.dropout, residual_dropout=args.r_dropout
+            )
+
         elif args.model == 'tabnet':
             model = TabNetModel(
                 input_dim=args.input_dim, n_d=args.n_da, n_a=args.n_da, n_steps=args.n_steps,
                 gamma=args.gamma, n_independent=args.n_independent, n_shared=args.n_shared,
                 lambda_sparse=args.lambda_sparse, mask_type=args.mask_type
             )
+            hparams = dict(
+                input_dim=args.input_dim, n_d=args.n_da, n_a=args.n_da, n_steps=args.n_steps,
+                gamma=args.gamma, n_independent=args.n_independent, n_shared=args.n_shared,
+                lambda_sparse=args.lambda_sparse, mask_type=args.mask_type
+            )
             data_module.batch_size = 1024
+
         else:
             model = TransformerModel(
                 d_numerical=args.input_dim, categories=None, n_layers=args.n_layers,
                 d_token=args.d_token, d_ffn_factor=args.d_ffn_factor,
                 ffn_dropout=args.ffn_dropout, attn_dropout=args.attn_dropout, residual_dropout=args.r_dropout,
             )
+            hparams = dict(
+                d_numerical=args.input_dim, categories=None, n_layers=args.n_layers,
+                d_token=args.d_token, d_ffn_factor=args.d_ffn_factor,
+                ffn_dropout=args.ffn_dropout, attn_dropout=args.attn_dropout, residual_dropout=args.r_dropout,
+            )
 
-        logger = TensorBoardLogger(save_dir='lightning_logs', name=args.location, version=args.version)
+        log_dir = os.path.join('lightning_logs', args.location)
+        os.makedirs(log_dir, exist_ok=True)
+        logger = TensorBoardLogger(save_dir=log_dir, name=args.model, version=args.version)
         log_dir = logger.log_dir
         ckpt_ver = f'version_{logger.version}'
     # when you want the model to predict the test data
     else:
-        root_dir = os.path.join('lightning_logs', args.location)
+        hparams = dict()
+        root_dir = os.path.join('lightning_logs', args.location, args.model)
         if args.version is None:
             existing_versions = []
             for f in os.listdir(root_dir):
@@ -156,11 +178,11 @@ if __name__ == '__main__':
                 d_numerical=args.input_dim, categories=None)
 
         logger = False
-        log_dir = f'lightning_logs/{args.location}'
+        log_dir = f'lightning_logs/{args.location}/{args.model}'
 
     ld = '-'.join(map(str, args.layers_dim))
     try:
-        div = os.path.splitext(args.data_path)[0].split('_')[1]
+        div = '-'.join(os.path.splitext(args.data_path)[0].split('_')[1:])
     except IndexError:
         div = 'all'
     if args.model == 'mlp':
@@ -175,6 +197,9 @@ if __name__ == '__main__':
         model_name = f'{args.model}_{args.location}_{div}_nl{args.n_layers}' \
                      f'_dim{args.d_token}_{ckpt_ver}'
     print(f'model name: {model_name}')
+    print('\n========================================\n')
+    print('Hyper parameters in experiment:')
+    print(hparams)
     print('\n========================================\n')
 
     model_checkpoint = ModelCheckpoint(
@@ -220,8 +245,8 @@ if __name__ == '__main__':
     predictions = predictions.mask(predictions <= 0, 0)
     output = pd.concat([df_test, predictions], axis=1)
     print(f'\n========================================\n')
-    output_dir = os.path.join('output', args.location)
+    output_dir = os.path.join('output', args.location, args.model)
     os.makedirs(output_dir, exist_ok=True)
     output.to_csv(os.path.join(output_dir, f'{model_name}.csv'), encoding='utf-8-sig')
-    print(f'output file was saved. output/{args.location}/{model_name}.csv')
+    print(f'output file was saved. {os.getcwd()}/output/{args.location}/{args.model}/{model_name}.csv')
     print(f'elapsed time: {time.time() - start:.2f} [sec]')
