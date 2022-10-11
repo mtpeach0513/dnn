@@ -161,20 +161,20 @@ if __name__ == '__main__':
 
         if args.model == 'mlp':
             model = MLP.load_from_checkpoint(
-                f'lightning_logs/{args.location}/{ckpt_ver}/last.ckpt',
+                f'lightning_logs/{args.location}/{args.model}/{ckpt_ver}/last.ckpt',
                 input_dim=args.input_dim)
         elif args.model == 'resnet':
             model = ResNet.load_from_checkpoint(
-                f'lightning_logs/{args.location}/{ckpt_ver}/last.ckpt',
+                f'lightning_logs/{args.location}/{args.model}/{ckpt_ver}/last.ckpt',
                 d_numerical=args.input_dim)
         elif args.model == 'tabnet':
             model = TabNetModel.load_from_checkpoint(
-                f'lightning_logs/{args.location}/{ckpt_ver}/last.ckpt',
+                f'lightning_logs/{args.location}/{args.model}/{ckpt_ver}/last.ckpt',
                 input_dim=args.input_dim)
             data_module.batch_size = 1024
         else:
             model = TransformerModel.load_from_checkpoint(
-                f'lightning_logs/{args.location}/{ckpt_ver}/last.ckpt',
+                f'lightning_logs/{args.location}/{args.model}/{ckpt_ver}/last.ckpt',
                 d_numerical=args.input_dim, categories=None)
 
         logger = False

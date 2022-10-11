@@ -146,6 +146,8 @@ cython_debug/
 *.txt
 *.ipynb
 *.npy
+*.tar.gz
+*.yaml
 data/*/dataset.py
 lightning_logs/
 output/
