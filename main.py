@@ -74,6 +74,8 @@ if __name__ == '__main__':
     parser.add_argument('--location', type=str, required=True, help='location of experiment')
     parser.add_argument('--version', type=int, default=None, help='experiment version')
     args = parser.parse_args()
+    args.data_path = os.path.basename(args.data_path)
+    args.test_path = os.path.basename(args.test_path)
     args.root_path = os.path.join('data', args.location)
 
     conf = Config()
